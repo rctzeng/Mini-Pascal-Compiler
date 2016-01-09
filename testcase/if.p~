@@ -1,0 +1,14 @@
+program test(in, out, err);
+var a, b : real;
+begin
+   a := 2.0;
+   b := 3.0;
+   if(not (a = b)) then
+   begin
+      printReal(a+b);
+   end
+   else
+   begin
+      printReal(a-b);
+   end
+end.
