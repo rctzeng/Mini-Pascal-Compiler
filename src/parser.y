@@ -377,8 +377,10 @@ constant : NUMBER {
   $$ = $1;
   $$->nodeType = NODE_INT;
 }| CHARACTER_STRING {
-  $$ = $1;
-  $$->nodeType = NODE_CHAR;
+  $$ = newNode(NODE_CHAR);
+  char *str = malloc(sizeof(char)*50);
+  strcpy(str, $1->string);
+  $$->string = str;
 };
 factor : IDENTIFIER {
   $$ = $1;

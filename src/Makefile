@@ -22,9 +22,10 @@ clean_all:
 	rm -rf $(DEST_CODEGEN) $(SCAN_YY) $(YY_TAB) $(YY_HEAD) $(BYTEFILE).* *.o *.output *.~
 clean:
 	rm -rf $(SCAN_YY) $(YY_TAB) $(YY_HEAD) $(BYTEFILE).* *.o *.output *.~
-run:
+gen:
 	./$(DEST_CODEGEN) $(IN) $(BYTEFILE)
 	rm -rf $(CODEGEN) $(SCAN_YY) $(YY_TAB) $(YY_HEAD) *.o *.output
+run:
 	java -jar $(JASMINE) $(BYTEFILE).j
 	java $(BYTEFILE)
 $(CODEGEN):

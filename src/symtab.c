@@ -21,7 +21,7 @@ int findSymbolAll(char *s, int dep) { // current -> global scope
   return -1;
 }
 int findSymbolAt(char *s, int dep) {
-  if(s == NULL) {printf("[ERROR] Referencing NULL names in SymbolTable\n"); SymbolTable.error = 1; return -1;}
+  if(s == NULL) {printf("[ERROR] Referencing NULL names in SymbolgTable\n"); SymbolTable.error = 1; return -1;}
   int index = SymbolTable.scopes[dep];
   while(index != -1) { if(strcmp(s, SymbolTable.entries[index].name) == 0) return index; index = SymbolTable.entries[index].next; }
   return -1;
@@ -48,7 +48,7 @@ struct DsrptType* copyType(struct SymTableEntry *sym) {
 }
 char* translateType(int type) {
   switch(type) {
-  case TypeInt: return "Int"; case TypeReal: return "Real"; case TypeChar: return "Char";
+  case TypeInt: return "Int"; case TypeReal: return "Real"; case TypeChar: return "String";
   case TypeBool: return "Bool"; case TypeArray: return "Array"; case TypeFun: return "Function";
   case TypeProc: return "Procedure"; case TypeLabel: return "Label"; case TypeType: return "Type";
   default: return "NULL";
@@ -160,19 +160,23 @@ enum StdType checkRange(struct nodeType *node) {
 }
 int checkInitialize(struct nodeType *node) {
   if(node->defined == 0 && node->string == NULL) return 0;
-    if(node->string != NULL) {
+    if(node->string != NULL && node->valueType != TypeChar) {
       int index = findSymbolAt(node->string, depth);
       if(index != -1) { if(SymbolTable.entries[index].defined == 0) return 0; return SymbolTable.entries[index].defined;}
       if(index == -1) { if(!(-1 != findSymbolAt(node->string, global) && depth > 0)) return 0; return 2;}
     }
     return node->defined;
 }
-enum StdType getArrayType(struct ArrayDsrpt *A) {
-  switch(A->type) {
-  case TypeInt: case TypeReal: case TypeChar: return A->type;
-  case TypeArray: return getArrayType(A->typeDsrpt);
-  default: { printf("[ERROR] Not Supported Array Type \"%s\"\n", translateType(A->type)); return TypeNull; }
+enum StdType refArrayType(struct nodeType *node, struct ArrayDsrpt *dsrpt) {
+  struct nodeType *dList = nthChild(2, node);
+  if(dList == node->child) return TypeArray;
+  struct nodeType *idNode = dList->child; struct nodeType **nodes = malloc(sizeof(struct nodeType *)*10);
+  int paraN; int i = 0; do { nodes[i] = idNode; i++; idNode = idNode->rsibling; } while(idNode != dList->child); paraN = i;
+  enum StdType t; struct ArrayDsrpt *arrayD = dsrpt; 
+  for(i=paraN-1; i>=0; i--) {
+    t = arrayD->type; arrayD = arrayD->typeDsrpt;
   }
+  return t;
 }
 /* display symboltable */
 char* intToStr(int n) { char *str = malloc(sizeof(char)*DSRPT_MAX); sprintf(str, "%d", n); return str;}
@@ -224,6 +228,7 @@ char* displayValue(enum StdType type, void *dsrpt) {
   switch(type) {
   case TypeInt: return intToStr(*(int *)dsrpt);
   case TypeReal: return realToStr(*(double *)dsrpt);
+    // case TypeChar: return dsrpt;
   case TypeFun: return intToStr(((struct FunctionDsrpt *)dsrpt)->scope);
   case TypeProc: return intToStr(((struct ProcedureDsrpt *)dsrpt)->scope);
   default: return "";
@@ -248,6 +253,10 @@ void loadDefaultProcedure() {
   dsrpt = (struct ProcedureDsrpt *)malloc(sizeof(struct ProcedureDsrpt));
   type = (struct DsrptType *)malloc(sizeof(struct DsrptType));
   type->type = TypeReal; type->typeDsrpt = NULL; dsrpt->paramType[0] = type; dsrpt->paramNum = 1; entry->typeDsrpt = dsrpt;
+  entry = addVariable("printString", TypeProc);
+  dsrpt = (struct ProcedureDsrpt *)malloc(sizeof(struct ProcedureDsrpt));
+  type = (struct DsrptType *)malloc(sizeof(struct DsrptType));
+  type->type = TypeChar; type->typeDsrpt = NULL; dsrpt->paramType[0] = type; dsrpt->paramNum = 1; entry->typeDsrpt = dsrpt;
 }
 void initSymTable() {
   SymbolTable.error = 0; depth = 0; SymbolTable.scope_num = 0;
@@ -386,6 +395,7 @@ void semanticCheck(struct nodeType *node) {
     }
     case TypeInt: { if(SymbolTable.entries[index].defined == 1) node->iValue = *((int *)SymbolTable.entries[index].typeDsrpt); node->valueType = SymbolTable.entries[index].type; return; }
     case TypeReal: { if(SymbolTable.entries[index].defined == 1) node->rValue = *((double *)SymbolTable.entries[index].typeDsrpt); node->valueType = SymbolTable.entries[index].type; return; }
+    case TypeChar: case TypeArray: { node->valueType = SymbolTable.entries[index].type; return; }
     case TypeProc: { return; }
     default: { fprintf(stderr, "[ERROR] Unimplemented type number = %d\n", SymbolTable.entries[index].type); node->valueType = SymbolTable.entries[index].type; return; }
     }
@@ -396,8 +406,8 @@ void semanticCheck(struct nodeType *node) {
     if(index == -1) { printf("[ERROR] Undeclared Variable \"%s\"\n", node->string); setError(node); return; }
     node->entry = &SymbolTable.entries[index];
     switch(SymbolTable.entries[index].type) {
-    case TypeInt: case TypeReal: { node->valueType = SymbolTable.entries[index].type; break; } 
-    case TypeArray: { node->valueType = getArrayType(SymbolTable.entries[index].typeDsrpt); break; }
+    case TypeInt: case TypeReal: case TypeChar: { node->valueType = SymbolTable.entries[index].type; break; } 
+    case TypeArray: { node->valueType = refArrayType(node, SymbolTable.entries[index].typeDsrpt); break; }
     }
     node->defined = SymbolTable.entries[index].defined; return;
   }
@@ -515,19 +525,19 @@ void semanticCheck(struct nodeType *node) {
     case TypeInt: {node->iValue = child2->iValue;
 	switch(SymbolTable.entries[index].type) {
 	case TypeInt: {int *v = (int *)malloc(sizeof(int)); *v = child2->iValue; SymbolTable.entries[index].typeDsrpt = v; break;}
-	case TypeArray: { break;} // not implemented
+	/* case TypeArray: { printf("Checking assignment to Int Array is not implemented\n"); return;} // not implemented */
 	}
 	break;
     }
     case TypeReal: {node->rValue = child2->rValue;
 	switch(SymbolTable.entries[index].type) {
 	case TypeReal: { double *v = (double *)malloc(sizeof(double)); *v = child2->rValue; SymbolTable.entries[index].typeDsrpt = v; break;}
-	case TypeArray: {break;} // not implemented
+	/* case TypeArray: { printf("Checking assignment to Real Array is not implemented\n"); return;} // not implemented */
 	}
 	break;
     }
     case TypeArray: { // check if range is the same
-      printf("[ERROR] Array Assignment is Not Implemented\n"); break;}
+      printf("[ERROR] Checking assignment of Array is not implemented\n"); break;}
     }
     node->valueType = child1->valueType; node->defined = child2->defined; return;
   }

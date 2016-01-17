@@ -41,6 +41,7 @@ char* genArraySig(struct ArrayDsrpt *dsrpt) {
   switch(dsrpt->type) {
   case TypeInt: { return "[I"; }
   case TypeReal: { return "[D"; }
+  case TypeChar: { return "[Ljava/lang/String;"; }
   case TypeArray: { char *sig = (char *)malloc(sizeof(char)*MAX_SIG); strcpy(sig, "["); strcat(sig, genArraySig(dsrpt->typeDsrpt)); return sig; }
   default: { fprintf(stderr, "[ERROR] Array Type of %d is undefined\n", dsrpt->type); exit(1); }
   }
@@ -51,6 +52,7 @@ void genGlobalVar() {
     switch(SymbolTable.entries[index].type) {
     case TypeInt: { SymbolTable.entries[index].index = -1; fprintf(stdout, ".field public static %s I\n", SymbolTable.entries[index].name); break;}
     case TypeReal: { SymbolTable.entries[index].index = -1; fprintf(stdout, ".field public static %s D\n", SymbolTable.entries[index].name); break; }
+    case TypeChar: { SymbolTable.entries[index].index = -1; fprintf(stdout, ".field public static %s Ljava/lang/String;\n", SymbolTable.entries[index].name); break; }
     case TypeArray: { SymbolTable.entries[index].index = -1; fprintf(stdout, ".field public static %s %s\n", SymbolTable.entries[index].name, genArraySig(SymbolTable.entries[index].typeDsrpt)); break; }
     }
     index = SymbolTable.entries[index].next;
@@ -63,6 +65,7 @@ char* genField(char *name) {
   switch(SymbolTable.entries[index].type) {
   case TypeInt: { strcat(rst, " I"); return rst; }
   case TypeReal: { strcat(rst, " D"); return rst; }
+  case TypeChar: { strcat(rst, " Ljava/lang/String;"); return rst; }
   default: { strcat(rst, " "); strcat(rst, genArraySig(SymbolTable.entries[index].typeDsrpt)); return rst; }
   }
 }
@@ -83,6 +86,7 @@ void allocArray(int index, char *fname) {
     switch(dsrpt->type) {
     case TypeInt: fprintf(stdout, "\tnewarray int\n"); break;
     case TypeReal: fprintf(stdout, "\tnewarray double\n"); break;
+    case TypeChar: fprintf(stdout, "\tanewarray java/lang/String\n"); break;
     default: fprintf(stderr, "Array Type of %d not implemented\n", dsrpt->type); exit(1);
     }
   }
@@ -100,7 +104,7 @@ void genBodyHead(char *fname, int varnum) { fprintf(stdout, ".method public stat
 void genBodyEnd() { fprintf(stdout, "\treturn\n.end method");}
 char* sigType(struct DsrptType *dtype) {
   enum StdType type = dtype->type;
-  switch(type) { case TypeInt: return "I"; case TypeReal: return "D"; case TypeArray: return genArraySig(dtype->typeDsrpt);
+  switch(type) { case TypeInt: return "I"; case TypeReal: return "D"; case TypeChar: return "Ljava/lang/String;"; case TypeArray: return genArraySig(dtype->typeDsrpt);
   default: { fprintf(stderr, "[ERROR] %s not implemented yet\n", displayType(dtype)); exit(1); }
   }
 }
@@ -127,17 +131,14 @@ char* genSignature(char *funproc_name) {
 }
 void genMethodDeclar() {
   fprintf(stdout, ".method public <init>()V\n\taload_0\n\tinvokenonvirtual java/lang/Object/<init>()V\n\treturn\n.end method\n");
-  /* printInt, printReal */ fprintf(stdout, ".method public static printInt(I)V\n\t.limit locals 1\n\t.limit stack 2\n\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n\tiload_0\n\tinvokevirtual java/io/PrintStream/println(I)V\n\treturn\n.end method\n.method public static printReal(D)V\n\t.limit locals 2\n\t.limit stack 3\n\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n\tdload_0\n\tinvokevirtual java/io/PrintStream/println(D)V\n\treturn\n.end method\n");
+  /* printInt, printReal, printString */
+  fprintf(stdout, ".method public static printInt(I)V\n\t.limit locals 1\n\t.limit stack 2\n\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n\tiload_0\n\tinvokevirtual java/io/PrintStream/println(I)V\n\treturn\n.end method\n.method public static printReal(D)V\n\t.limit locals 2\n\t.limit stack 3\n\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n\tdload_0\n\tinvokevirtual java/io/PrintStream/println(D)V\n\treturn\n.end method\n.method public static printString(Ljava/lang/String;)V\n\t.limit locals 1\n\t.limit stack 2\n\tgetstatic java/lang/System/out Ljava/io/PrintStream;\n\taload_0\n\tinvokevirtual java/io/PrintStream/println(Ljava/lang/String;)V\n\treturn\n.end method\n");
 }
 int checkReference(struct nodeType *node) {
-  int index = findSymbolAll(node->string, depth);
-  if(SymbolTable.entries[index].type == TypeArray) return 1;
-  return 0;
+  int index = findSymbolAll(node->string, depth); if(SymbolTable.entries[index].type == TypeArray) return 1; return 0;
 }
 int genSimpleLHS(struct nodeType *node) {
-  int index = findSymbolAll(node->string, depth);
-  if(index == -1) fprintf(stderr, "[ERROR] %s not found at scope %d\n", node->string, depth);
-  return SymbolTable.entries[index].index;
+  int index = findSymbolAll(node->string, depth); if(index == -1) fprintf(stderr, "[ERROR] %s not found at scope %d\n", node->string, depth); return SymbolTable.entries[index].index;
 }
 void genArrayLHS(struct nodeType *node, char *fname) {
   struct nodeType *nameNode = nthChild(1, node); struct nodeType *dList = nthChild(2, node);
@@ -175,6 +176,7 @@ void genArrayRef(struct nodeType *node, char *fname) {
       switch(arrayD->type) {
       case TypeInt: print("iaload"); return;
       case TypeReal: print("daload"); return;
+      case TypeChar: print("aaload"); return;
       default: fprintf(stderr, "Array Type of %d not implemented\n", arrayD->type); exit(1);
       }
     }
@@ -184,8 +186,7 @@ void genArrayRef(struct nodeType *node, char *fname) {
 char* genLabel() {
   char *label = (char *)malloc(sizeof(char)*MAX_LABEL);
   char *num = malloc(sizeof(char)*(MAX_LABEL-1)); sprintf(num, "%d", label_num);
-  strcpy(label, "L"); strcat(label, num);
-  label_num++;
+  strcpy(label, "L"); strcat(label, num); label_num++;
   return label;
 }
 void negateOperator(struct nodeType *node) {
@@ -257,6 +258,7 @@ void genPostLude(char *funproc_name) {
     switch(fun->retType->type) {
     case TypeInt: { int index = findSymbolAt(funproc_name, depth); fprintf(stdout, "\tiload %d\n\tireturn\n", SymbolTable.entries[index].index); return; }
     case TypeReal: { int index = findSymbolAt(funproc_name, depth); fprintf(stdout, "\tdload %d\n\tdreturn\n", SymbolTable.entries[index].index); return; }
+    case TypeChar: { int index = findSymbolAt(funproc_name, depth); fprintf(stdout, "\taload %d\n\tareturn\n", SymbolTable.entries[index].index); return; }
     default: fprintf(stderr, "Return type = %d is not implemented\n", fun->retType->type); exit(1);
     }
   }
@@ -286,8 +288,10 @@ void genCode(struct nodeType *node, char *fname) {
     switch(entry.type) {
     case TypeInt: { if(entry.index == -1) fprintf(stdout, "\tgetstatic %s.%s\n", fname, genField(node->string)); else fprintf(stdout, "\tiload %d\n", entry.index); return; }
     case TypeReal: { if(entry.index == -1) fprintf(stdout, "\tgetstatic %s.%s\n", fname, genField(node->string)); else fprintf(stdout, "\tdload %d\n", entry.index); return; }
+    case TypeChar: case TypeArray: { if(entry.index == -1) fprintf(stdout, "\tgetstatic %s.%s\n", fname, genField(node->string)); else fprintf(stdout, "\taload %d\n", entry.index); return; }
     case TypeFun:
     case TypeProc: { fprintf(stdout, "\tinvokestatic %s.%s\n", fname, genSignature(node->string)); return; }
+    default: { fprintf(stderr, "Determing Var_or_Proc for Type %d unimplemented\n", entry.type); }
     }
     return; 
   }
@@ -300,6 +304,8 @@ void genCode(struct nodeType *node, char *fname) {
       switch(entry.type) {
       case TypeInt: { fprintf(stdout, "\tiload %d\n", entry.index); return; }
       case TypeReal: { fprintf(stdout, "\tdload %d\n", entry.index); return; }
+      case TypeChar: { fprintf(stdout, "\taload %d\n", entry.index); return; }
+      default: { fprintf(stderr, "Symbol reference for Type %d unimplemented\n", entry.type); }
       }
     }
     return; 
@@ -314,6 +320,7 @@ void genCode(struct nodeType *node, char *fname) {
       switch(Lexp->valueType) {
       case TypeInt:{ switch(node->op) { case OP_ADD: print("iadd"); break; case OP_SUB: print("isub"); break; case OP_MUL: print("imul"); break; case OP_DIV: print("idiv"); break; } break;}
       case TypeReal:{ switch(node->op) { case OP_ADD: print("dadd"); break; case OP_SUB: print("dsub"); break; case OP_MUL: print("dmul"); break; case OP_DIV: print("ddiv"); break; } break;}
+      default: { fprintf(stderr, "Operation for Type %d unimplemented\n", Lexp->valueType); }
       } return; }
     case OP_GT: case OP_LT: case OP_GE: case OP_LE: case OP_EQ: case OP_NE: case OP_NOT: {fprintf(stderr, "[ERROR] Compare Statements Not in Predicate\n"); break; }
     default: { return; }
@@ -326,13 +333,31 @@ void genCode(struct nodeType *node, char *fname) {
     case TypeInt: {
       int check = checkReference(LHS);
       switch(check) {
-      case 0: { int index = genSimpleLHS(LHS); genCode(RHS, fname); if(index == -1) fprintf(stdout, "\tputstatic %s.%s\n", fname, genField(LHS->string)); else fprintf(stdout, "\tistore %d\n", index); return;}
-      case 1: { genArrayLHS(LHS, fname); genCode(RHS, fname); fprintf(stdout, "\tiastore\n"); return;}
+      case 0: { 
+	int index = genSimpleLHS(LHS); genCode(RHS, fname); 
+	if(index == -1) fprintf(stdout, "\tputstatic %s.%s\n", fname, genField(LHS->string)); 
+	else fprintf(stdout, "\tistore %d\n", index); return;}
+      case 1: { 
+	genArrayLHS(LHS, fname); genCode(RHS, fname); 
+	fprintf(stdout, "\tiastore\n"); return;}
       }}
     case TypeReal: {
-      int index = genSimpleLHS(LHS);
-      genCode(RHS, fname);
+      int check = checkReference(LHS);
+      switch(check) {
+      case 0: {
+      int index = genSimpleLHS(LHS); genCode(RHS, fname);
       if(index == -1) fprintf(stdout, "\tputstatic %s.%s\n", fname, genField(LHS->string)); else fprintf(stdout, "\tdstore %d\n", index); return; }
+      case 1: {
+	genArrayLHS(LHS, fname); genCode(RHS, fname); fprintf(stdout, "\tdastore\n"); return; }
+      }}
+    case TypeChar: {
+      int check = checkReference(LHS);
+      switch(check) {
+      case 0: { int index = genSimpleLHS(LHS); genCode(RHS, fname);
+      if(index == -1) fprintf(stdout, "\tputstatic %s.%s\n", fname, genField(LHS->string)); else fprintf(stdout, "\tastore %d\n", index); return; }
+      case 1: { genArrayLHS(LHS, fname); genCode(RHS, fname); fprintf(stdout, "\taastore\n"); return; }
+      }}
+    default: { fprintf(stderr, "Assignment for Type %d unimplemented\n", LHS->valueType); }
     }
     return; 
   }
@@ -372,5 +397,5 @@ void genCode(struct nodeType *node, char *fname) {
   case NODE_LABEL: { node->valueType = TypeLabel; return; }
   }
   /* default action for other nodes */
-  struct nodeType *child = node->child; if(child != 0) {do { genCode(child, fname); child = child->rsibling; } while(child != node->child);}
+  struct nodeType *child = node->child; if(child != 0) { do { genCode(child, fname); child = child->rsibling; } while(child != node->child); }
 }
