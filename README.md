@@ -19,4 +19,6 @@ You must install Lex and YACC first before compiling the source.
 #### Instructions
  1. go to folder [src](src)
  2. `$ make`
- 3. `$ make run`
+ 3. change `IN` file, ex: `IN = ../testcase/12_fib.p`
+ 4. `$ make gen` to compile and then `$ make run`
+ 5. `$ make clean_all`
